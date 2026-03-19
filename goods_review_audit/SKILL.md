@@ -1,7 +1,7 @@
 ---
 name: goods_review_audit
 description: 商品检查审核技能。当用户要求审核商品、检查商品合规性、进行商品数字化处理时使用此技能。支持多门店多品牌的商品自动审核流程，包括商品信息校验、图片质量检测、智能抠图处理等。典型触发场景："审核宁波店LE COQ SPORTIF商品"、"检查某门店某品牌商品"、"批量审核店铺商品"。即使用户只是提到"商品审核"、"审核一下"、"过一下商品"，也应使用此技能。
-compatibility: 需要 Python 3.10+、requests 库、图像查看能力（用于主图质量判断）
+compatibility: 需要 Python 3.9+、requests 库、图像查看能力（用于主图质量判断）
 ---
 
 # 商品检查审核技能
@@ -114,9 +114,13 @@ goods_info = extract_goods_info(goods_list[0])
 # brandId, categoryNames, parentCategoryName,
 # categoryGender, categorySeason,
 # minOriPrice, maxOriPrice, minCurPrice, maxCurPrice, discountRate,
-# picCount, detailCount, gallery, picUrl, skuPicUrls,
-# productList, approveStatus, enabled
+# galleryCount (主图数量，由 len(gallery) 计算),
+# detailImgCount (详情图数量，由正则匹配 detail HTML 中 <img> 标签计算),
+# gallery (主图URL列表), detail (详情HTML原始内容),
+# picUrl, skuPicUrls, productList, approveStatus, enabled
 ```
+
+**注意**：API 返回的 `picCount` 和 `detailCount` 字段不可靠（常为0），`extract_goods_info` 已改为通过实际数据计算 `galleryCount` 和 `detailImgCount`。
 
 ### 第五步：商品信息合规性检测
 
@@ -187,12 +191,13 @@ def check_sensitive_words(text: str) -> tuple[bool, list[str]]:
 #### 6.2 图片数量检测
 
 ```python
-pic_count = goods_info.get('picCount', 0)      # 主图数量
-detail_count = goods_info.get('detailCount', 0)  # 详情图数量
+gallery_count = goods_info.get('galleryCount', 0)      # 主图数量
+detail_img_count = goods_info.get('detailImgCount', 0)  # 详情图数量
 ```
 
 - 商品主图：至少3张
 - 商品详情图：至少5张
+- 额外检查：主图 URL 是否有重复（`gallery` 列表中相同 URL 出现多次视为问题）
 
 不满足时记录具体的缺少数量。
 
@@ -382,20 +387,20 @@ approve_count, fail_reasons = approve_goods([goods_id])
 
 ## 脚本函数速查
 
-| 脚本文件               | 函数                                                             | 参数             | 返回值                  |
-| ---------------------- | ---------------------------------------------------------------- | ---------------- | ----------------------- |
-| `plaza_code_map.py`    | `get_plaza_code(store_name)`                                     | `str`            | `str \| None`           |
-| `plaza_code_map.py`    | `get_all_plaza_codes()`                                          | 无               | `dict`                  |
-| `get_shop_id.py`       | `get_shop_id(plaza_code, shop_name)`                             | `str, str`       | `int \| None`           |
-| `get_shop_id.py`       | `get_all_shops(plaza_code)`                                      | `str`            | `list`                  |
-| `query_goods.py`       | `query_goods_list(plaza_code, shop_id)`                          | `str, int`       | `list[dict]`            |
-| `query_goods.py`       | `extract_goods_info(goods)`                                      | `dict`           | `dict`                  |
-| `query_template.py`    | `query_template_category(goods_id)`                              | `int`            | `str`                   |
-| `remove_background.py` | `remove_background(goods_id, pic_url, template_name)`            | `int, str, str`  | `str`                   |
-| `update_gallery.py`    | `update_gallery(goods_id, processed_pic_url, template_category)` | `int, str, str`  | `bool`                  |
-| `mark_white_pic.py`    | `mark_white_pic(goods_id, force_override=False)`                 | `int, bool`      | `bool`                  |
-| `approve_goods.py`     | `approve_goods(goods_ids, approve_status="Y")`                   | `list[int], str` | `tuple[int, list[str]]` |
-| `check_cookie.py`      | `check_and_set_cookie(cookie_value=None)`                        | `str \| None`    | `str`                   |
+| 脚本文件               | 函数                                                             | 参数             | 返回值                                   |
+| ---------------------- | ---------------------------------------------------------------- | ---------------- | ---------------------------------------- |
+| `plaza_code_map.py`    | `get_plaza_code(store_name)`                                     | `str`            | `str \| None`                            |
+| `plaza_code_map.py`    | `get_all_plaza_codes()`                                          | 无               | `dict`                                   |
+| `get_shop_id.py`       | `get_shop_id(plaza_code, shop_name)`                             | `str, str`       | `int \| None`                            |
+| `get_shop_id.py`       | `get_all_shops(plaza_code)`                                      | `str`            | `list`                                   |
+| `query_goods.py`       | `query_goods_list(plaza_code, shop_id)`                          | `str, int`       | `list[dict]`                             |
+| `query_goods.py`       | `extract_goods_info(goods)`                                      | `dict`           | `dict` (含 galleryCount, detailImgCount) |
+| `query_template.py`    | `query_template_category(goods_id)`                              | `int`            | `str`                                    |
+| `remove_background.py` | `remove_background(goods_id, pic_url, template_name)`            | `int, str, str`  | `str`                                    |
+| `update_gallery.py`    | `update_gallery(goods_id, processed_pic_url, template_category)` | `int, str, str`  | `bool`                                   |
+| `mark_white_pic.py`    | `mark_white_pic(goods_id, force_override=False)`                 | `int, bool`      | `bool`                                   |
+| `approve_goods.py`     | `approve_goods(goods_ids, approve_status="Y")`                   | `list[int], str` | `tuple[int, list[str]]`                  |
+| `check_cookie.py`      | `check_and_set_cookie(cookie_value=None)`                        | `str \| None`    | `str`                                    |
 
 ## 参考文档
 

@@ -3,6 +3,8 @@
 门店编号(PlazaCode)映射表
 """
 
+from typing import Optional
+
 PLAZA_CODE_MAP = {
     "宁波店": "0001",
     "哈尔滨店": "0002",
@@ -29,9 +31,11 @@ PLAZA_CODE_MAP = {
     "无锡店": "0024",
 }
 
-def get_plaza_code(store_name: str) -> str | None:
+
+def get_plaza_code(store_name: str) -> Optional[str]:
     """根据店铺名称获取plazaCode"""
     return PLAZA_CODE_MAP.get(store_name)
+
 
 def get_all_plaza_codes() -> dict:
     """获取所有plazaCode映射"""

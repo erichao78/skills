@@ -104,6 +104,12 @@ def extract_goods_info(goods: dict) -> dict:
     Returns:
         商品关键信息
     """
+    import re
+
+    gallery = goods.get("gallery", [])
+    detail_html = goods.get("detail", "")
+    detail_img_count = len(re.findall(r"<img\s", detail_html)) if detail_html else 0
+
     return {
         "id": goods.get("id"),
         "goodsSn": goods.get("goodsSn"),
@@ -121,9 +127,10 @@ def extract_goods_info(goods: dict) -> dict:
         "minCurPrice": goods.get("minCurPrice"),
         "maxCurPrice": goods.get("maxCurPrice"),
         "discountRate": goods.get("discountRate"),
-        "picCount": goods.get("picCount"),
-        "detailCount": goods.get("detailCount"),
-        "gallery": goods.get("gallery", []),
+        "galleryCount": len(gallery),
+        "detailImgCount": detail_img_count,
+        "gallery": gallery,
+        "detail": detail_html,
         "picUrl": goods.get("picUrl"),
         "skuPicUrls": goods.get("skuPicUrls", []),
         "productList": goods.get("productList", []),
