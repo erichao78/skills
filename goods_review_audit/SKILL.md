@@ -332,6 +332,13 @@ approve_count, fail_reasons = approve_goods([goods_id])
 
 支持批量审核多个商品：`approve_goods([id1, id2, id3])`。
 
+**注意**：即使本地检测全部通过，API 端仍可能因业务规则拒绝审核，常见原因：
+
+- "无共享库商品，无法审核"：商品尚未关联共享库，需运营人员先完成关联
+- 其他后端校验失败
+
+当 `approve_count == 0` 且 `fail_reasons` 非空时，将 API 返回的失败原因一并汇报给用户。
+
 #### 8.3 审核不通过
 
 对于不符合条件的商品，记录不通过原因，**不调用 `approve_goods`**。将原因汇总到最终报告中。
@@ -360,6 +367,7 @@ approve_count, fail_reasons = approve_goods([goods_id])
 
 - 不通过商品 <= 10款时，逐条列出详情
 - 不通过商品 > 10款时，按原因类型汇总统计
+- 如有 API 端审核失败的商品（本地检测通过但后端拒绝），单独列出并展示 API 返回的失败原因
 
 ## 错误处理
 
