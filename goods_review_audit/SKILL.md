@@ -1,7 +1,7 @@
 ---
 name: goods_review_audit
 description: 商品检查审核技能。当用户要求审核商品、检查商品合规性、进行商品数字化处理时使用此技能。支持多门店多品牌的商品自动审核流程，包括商品信息校验、图片质量检测、智能抠图处理等。典型触发场景："审核宁波店LE COQ SPORTIF商品"、"检查某门店某品牌商品"、"批量审核店铺商品"。即使用户只是提到"商品审核"、"审核一下"、"过一下商品"，也应使用此技能。
-compatibility: 需要 Python 3.9+、requests 库、图像查看能力（用于主图质量判断）
+compatibility: 需要 Python 3.9+、requests 库、图像查看能力（使用如 MCP browser 工具或其他图像工具，用于图片质量判断）
 ---
 
 # 商品检查审核技能
@@ -64,6 +64,7 @@ cookie = os.getenv("GOODS_AUDIT_COOKIE")
 
 - 具体的门店名称
 - 具体的店铺/品牌名称
+- 具体的商品编码 SPU
 
 ### 第二步：获取门店编号
 
@@ -129,8 +130,8 @@ goods_info = extract_goods_info(goods_list[0])
 #### 5.1 基本信息完整性
 
 - **SPU编码** (`goodsSn`): 必须存在且非空
-- **商品名称** (`name`): 不得为空
-- **商品标题** (`goodsTitle`): 不得少于5个中文字符
+- **SKU编码** (`productList`): 遍历列表检查`skuCode`必须存在且非空
+- **商品名称** (`name`): 不得为空，不得少于5个中文字符
 - **品牌信息** (`brandId`): 必须存在
 - **分类信息** (`categoryNames`): 必须存在
 - **性别/季节** (`categoryGender`, `categorySeason`): 必须填写
@@ -142,7 +143,7 @@ goods_info = extract_goods_info(goods_list[0])
 
 #### 5.3 标题敏感词检测
 
-参考 `references/sensitive_words.md` 中定义的敏感词库，对商品标题进行检测。该文件中包含了敏感词列表和一个示例检测函数 `check_sensitive_words`，可以直接复制该逻辑在内存中执行：
+参考 `references/sensitive_words.md` 中定义的敏感词库，对商品名称进行检测。该文件中包含了敏感词列表和一个示例检测函数 `check_sensitive_words`，可以直接复制该逻辑在内存中执行：
 
 ```python
 SENSITIVE_WORDS = {
@@ -157,7 +158,7 @@ def check_sensitive_words(text: str) -> tuple[bool, list[str]]:
     return len(found) == 0, found
 ```
 
-**检查范围**：商品标题 (`goodsTitle`)、商品名称 (`name`)
+**检查范围**：商品名称 (`name`)
 
 **检查项**：
 
@@ -203,7 +204,7 @@ detail_img_count = goods_info.get('detailImgCount', 0)  # 详情图数量
 
 #### 6.3 图片质量检测
 
-使用图像查看工具检查每张主图：
+使用图像查看能力（如 MCP browser 工具或其他图像工具）检查每张主图：
 
 1. **清晰度**：图片清晰，无模糊
 2. **违规信息**：无违规文字、图案
@@ -212,7 +213,7 @@ detail_img_count = goods_info.get('detailImgCount', 0)  # 详情图数量
 
 #### 6.4 图片完整性检测
 
-查看 `gallery` 字段中的图片 URL，检查是否包含以下类型：
+使用图像查看能力（如 MCP browser 工具或其他图像工具）查看 `gallery` 字段中的图片 URL，检查是否包含以下类型：
 
 - 正面图：展示商品正面
 - 背面图：展示商品背面
@@ -238,14 +239,64 @@ template_category = query_template_category(goods_id)
 
 #### 7.2 选择抠图源图片
 
-按以下优先级选择：
+抠图的目标是生成干净的白底商品图，因此源图片必须展示完整的商品主体。在第六步图片检测中已识别出每张主图的类型，这里利用这些信息筛选和排序。
 
-1. 商品主图第一张 (`gallery[0]`)
-2. 纯色背景模特图
-3. 非纯色背景模特图
+**可抠图判断标准**
+
+先使用图像查看能力（如 MCP browser 工具或其他图像工具）遍历 `gallery` 中所有主图，根据图片类型标记是否适合抠图：
+
+| 图片类型           | 可抠图 | 原因                                   |
+| ------------------ | ------ | -------------------------------------- |
+| 正面图（纯色背景） | ✅     | 背景简单，商品完整，抠图效果最佳       |
+| 正面图（复杂背景） | ✅     | 商品完整，但复杂背景可能影响边缘质量   |
+| 背面图（纯色背景） | ✅     | 可作为备选，展示完整商品背面           |
+| 背面图（复杂背景） | ✅     | 可用，但优先级低于纯色背景             |
+| 颜色图             | ✅     | 展示完整商品，可用于该色系的白底图     |
+| 模特图（纯色背景） | ✅     | 适合服装类，人+商品一起抠出效果好      |
+| 模特图（复杂背景） | ⚠️     | 勉强可用，背景复杂容易残留，优先级最低 |
+| 细节图             | ❌     | 仅展示局部，无法生成完整商品白底图     |
+| 吊牌图             | ❌     | 非商品主体，不适合作为白底图           |
+| 尺码表图           | ❌     | 信息图表，非商品实拍                   |
+| 手拍图             | ❌     | 第六步已标记不通过，背景杂乱且不专业   |
+| 模糊/遮挡图        | ❌     | 无法保证抠图质量                       |
+
+**优先级选择逻辑**
+
+在标记为可抠图（✅）的图片中，按以下优先级选择源图片：
+
+1. **纯色背景正面图** — 背景干净、商品完整居中，抠图成功率最高
+2. **纯色背景模特图** — 适合服装品类，人模搭配展示效果好
+3. **纯色背景背面图** — 备选方案，适用于正面图缺失的情况
+4. **复杂背景正面图** — 商品完整但背景复杂，抠图可能需要后续校验
+5. **颜色图** — 通常背景较简单，可作为补充
+6. **复杂背景模特图（⚠️）** — 最后手段，使用时需额外关注抠图质量
+
+如果所有主图均不可抠图（全部为细节图、吊牌图等），标记该商品"无可用抠图源"并跳过抠图步骤，在最终报告中说明原因。
 
 ```python
-source_pic_url = goods_info.get('gallery', [])[0]
+def select_cutout_source(gallery_images, image_types):
+    """
+    gallery_images: gallery URL 列表
+    image_types: 第六步中识别的每张图的类型信息列表，
+                 每项包含 {'url': str, 'type': str, 'bg': 'pure'|'complex'|'unknown'}
+    """
+    priority_order = [
+        lambda img: img['type'] == '正面图' and img['bg'] == 'pure',
+        lambda img: img['type'] == '模特图' and img['bg'] == 'pure',
+        lambda img: img['type'] == '背面图' and img['bg'] == 'pure',
+        lambda img: img['type'] == '正面图' and img['bg'] == 'complex',
+        lambda img: img['type'] == '颜色图',
+        lambda img: img['type'] == '模特图' and img['bg'] == 'complex',
+    ]
+
+    not_suitable = {'细节图', '吊牌图', '尺码表图', '手拍图'}
+
+    for check in priority_order:
+        for img in image_types:
+            if img['type'] not in not_suitable and check(img):
+                return img['url']
+
+    return None  # 无可用抠图源
 ```
 
 #### 7.3 执行抠图
@@ -267,7 +318,7 @@ processed_pic_url = remove_background(
 
 #### 7.4 抠图质量校验
 
-使用图像查看工具打开 `processed_pic_url`，检查：
+使用图像查看能力（如 MCP browser 工具或其他图像工具）打开 `processed_pic_url`，检查：
 
 - 背景是否为纯白色
 - 商品是否完整（无缺失部分）
