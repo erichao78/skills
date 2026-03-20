@@ -52,19 +52,21 @@ cookie = os.getenv("GOODS_AUDIT_COOKIE")
 
 ### 第一步：解析用户指令
 
-从用户指令中提取**门店名称**和**店铺（品牌）名称**：
+从用户指令中提取**门店名称**、**店铺（品牌）名称**和/或**商品 SPU 编码**：
 
 ```
+示例1 — 审核店铺全部待审核商品：
 用户指令：审核宁波店LE COQ SPORTIF(乐卡克公鸡)商品
-门店名称：宁波店
-店铺名称：LE COQ SPORTIF(乐卡克公鸡)
+→ 门店：宁波店，店铺：LE COQ SPORTIF(乐卡克公鸡)，SPU：无
+
+示例2 — 审核指定 SPU 商品：
+用户指令：审核宁波店LE COQ SPORTIF的R2401001和R2401002
+→ 门店：宁波店，店铺：LE COQ SPORTIF，SPU：R2401001, R2401002
 ```
 
-如果用户指令中的信息不完整，需要询问用户提供：
+SPU 编码通常是字母+数字的组合（如 `R2401001`、`LCS-2024-001`），用户可能以逗号、空格或换行分隔多个编码。
 
-- 具体的门店名称
-- 具体的店铺/品牌名称
-- 具体的商品编码 SPU
+如果用户指令信息不完整，至少需要**门店名称**和**店铺名称**才能查询，请询问用户补充。
 
 ### 第二步：获取门店编号
 
@@ -95,7 +97,11 @@ shop_id = get_shop_id(plaza_code, "LE COQ SPORTIF(乐卡克公鸡)")
 
 ### 第四步：查询商品信息
 
-使用 `scripts/query_goods.py` 中的 `query_goods_list()` 获取待审核商品列表：
+使用 `scripts/query_goods.py` 获取商品信息。根据第一步的解析结果选择查询方式：
+
+#### 场景A：查询店铺全部待审核商品
+
+当用户未指定 SPU 编码，需审核某店铺全部待审核商品时：
 
 ```python
 from scripts.query_goods import query_goods_list, extract_goods_info
@@ -104,9 +110,36 @@ goods_list = query_goods_list(plaza_code, shop_id)
 # 返回 list[dict]，每个 dict 是一个商品的完整数据
 ```
 
-该函数默认查询 `approveStatus="A"`（待审核）的商品。返回结果包含商品的基本信息、价格、库存、图片等全部字段。
+#### 场景B：按 SPU 编码查询指定商品
 
-对每个商品，使用 `extract_goods_info()` 提取关键信息：
+当用户指令中包含 SPU 编码时，使用 `find_goods_by_sn()` 精确查询指定商品：
+
+```python
+from scripts.query_goods import find_goods_by_sn, extract_goods_info
+
+# 单个 SPU
+goods = find_goods_by_sn(plaza_code, shop_id, "R2401001")
+if goods:
+    goods_list = [goods]
+
+# 多个 SPU
+spu_codes = ["R2401001", "R2401002", "R2401003"]
+goods_list = []
+not_found = []
+for spu in spu_codes:
+    result = find_goods_by_sn(plaza_code, shop_id, spu)
+    if result:
+        goods_list.append(result)
+    else:
+        not_found.append(spu)
+# 如有未找到的 SPU，告知用户（可能编码有误、不属于该店铺或非待审核状态）
+```
+
+两种场景都默认只查询 `approveStatus="A"`（待审核）的商品。如果按 SPU 查询未找到结果，提示用户该商品可能编码有误、不属于该店铺，或已不在待审核状态。
+
+#### 提取关键信息
+
+无论使用哪种查询方式，对每个商品都使用 `extract_goods_info()` 提取关键信息：
 
 ```python
 goods_info = extract_goods_info(goods_list[0])
@@ -452,7 +485,9 @@ approve_count, fail_reasons = approve_goods([goods_id])
 | `plaza_code_map.py`    | `get_all_plaza_codes()`                                          | 无               | `dict`                                   |
 | `get_shop_id.py`       | `get_shop_id(plaza_code, shop_name)`                             | `str, str`       | `int \| None`                            |
 | `get_shop_id.py`       | `get_all_shops(plaza_code)`                                      | `str`            | `list`                                   |
-| `query_goods.py`       | `query_goods_list(plaza_code, shop_id)`                          | `str, int`       | `list[dict]`                             |
+| `query_goods.py`       | `query_goods_list(plaza_code, shop_id, goods_sn=None)`           | `str, int, str?` | `list[dict]`                             |
+| `query_goods.py`       | `find_goods_by_sn(plaza_code, shop_id, goods_sn)`                | `str, int, str`  | `dict \| None`                           |
+| `query_goods.py`       | `find_goods_by_name(plaza_code, shop_id, goods_name)`            | `str, int, str`  | `dict \| None`                           |
 | `query_goods.py`       | `extract_goods_info(goods)`                                      | `dict`           | `dict` (含 galleryCount, detailImgCount) |
 | `query_template.py`    | `query_template_category(goods_id)`                              | `int`            | `str`                                    |
 | `remove_background.py` | `remove_background(goods_id, pic_url, template_name)`            | `int, str, str`  | `str`                                    |
