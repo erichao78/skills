@@ -227,11 +227,24 @@ def check_sensitive_words(text: str) -> tuple[bool, list[str]]:
 ```python
 gallery_count = goods_info.get('galleryCount', 0)      # 主图数量
 detail_img_count = goods_info.get('detailImgCount', 0)  # 详情图数量
+sku_pic_urls = goods_info.get('skuPicUrls', [])         # 颜色图列表
 ```
 
 - 商品主图：至少3张
 - 商品详情图：至少5张
 - 额外检查：主图 URL 是否有重复（`gallery` 列表中相同 URL 出现多次视为问题）
+- 颜色图检测：先检查 `skuPicUrls` 是否为空列表。如果 `skuPicUrls` 非空，再逐项检查列表中每个元素的 `picUrl` 字段是否为空——`picUrl` 为空说明该颜色缺少对应的展示图片，需要记录具体是哪个颜色缺图
+
+```python
+if sku_pic_urls:
+    missing_pic_skus = [
+        sku for sku in sku_pic_urls
+        if not sku.get('picUrl')
+    ]
+    if missing_pic_skus:
+        # 记录缺少颜色图的 SKU 信息，汇报给用户
+        pass
+```
 
 不满足时记录具体的缺少数量。
 
