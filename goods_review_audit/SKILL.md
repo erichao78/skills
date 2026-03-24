@@ -1,7 +1,7 @@
 ---
 name: goods_review_audit
 description: 商品检查审核技能。当用户要求审核商品、检查商品合规性、进行商品数字化处理时使用此技能。支持多门店多品牌的商品自动审核流程，包括商品信息校验、图片质量检测、智能抠图处理等。典型触发场景："审核宁波店LE COQ SPORTIF商品"、"检查某门店某品牌商品"、"批量审核店铺商品"。即使用户只是提到"商品审核"、"审核一下"、"过一下商品"，也应使用此技能。
-compatibility: 需要 Python 3.9+、requests 库、图像查看能力（使用如 MCP browser 工具或其他图像工具，用于图片质量判断）
+compatibility: 需要 Python 3.9+、requests 库、openpyxl 库（用于生成 Excel 审核报告）、图像查看能力（使用如 MCP browser 工具或其他图像工具，用于图片质量判断）
 ---
 
 # 商品检查审核技能
@@ -29,6 +29,7 @@ from scripts.remove_background import remove_background
 from scripts.update_gallery import update_gallery
 from scripts.mark_white_pic import mark_white_pic
 from scripts.approve_goods import approve_goods
+from scripts.export_audit_result import export_audit_result, generate_summary_text
 ```
 
 ## 工作流程
@@ -442,29 +443,68 @@ approve_count, fail_reasons = approve_goods([goods_id])
 
 ### 第九步：输出审核结果
 
-按照以下格式向用户汇报审核结果：
+审核结果分两部分输出：**文字总结**给用户快速了解全局，**Excel 报告**提供每个商品的完整审核详情。使用 `scripts/export_audit_result.py` 完成生成和导出。
+
+在审核过程中（第五步到第八步），逐步为每个商品构建如下结构的审核结果数据，供本步骤使用：
+
+```python
+all_goods_results = [
+    {
+        "goodsSn": "R2401001",
+        "name": "商品名称",
+        "passed": True,
+        "fail_reasons": [],
+        "checks": [
+            {"name": "基本信息完整性", "passed": True, "detail": ""},
+            {"name": "价格合规性", "passed": True, "detail": ""},
+            {"name": "主图数量", "passed": False, "detail": "当前2张，要求至少3张"},
+        ],
+    },
+]
+```
+
+#### 9.1 生成 Excel 报告并输出文字总结
+
+调用前确保已安装依赖：`pip install openpyxl`（`requests` 同理，其他步骤已在使用）。
+
+```python
+from scripts.export_audit_result import export_audit_result, generate_summary_text
+
+excel_path = export_audit_result(all_goods_results, store_name, shop_name)
+summary = generate_summary_text(store_name, shop_name, all_goods_results)
+print(summary)
+```
+
+`export_audit_result()` 生成 Excel 报告（单个 Sheet）并返回文件路径。**不要把文件路径展示给用户**，而是将该文件作为附件发送给用户（例如通过 `present_files` 工具或平台的附件发送机制）。
+
+**审核报告** — 每行一个商品，每个检查项透视为独立列
+
+| 列类型               | 列名                                                                      | 内容                                               |
+| -------------------- | ------------------------------------------------------------------------- | -------------------------------------------------- |
+| 固定列               | 序号                                                                      | 从 1 开始编号                                      |
+| 固定列               | SPU编码                                                                   | `goodsSn`                                          |
+| 固定列               | 商品名称                                                                  | `name`                                             |
+| 固定列               | 审核结果                                                                  | "通过"（绿色）或 "不通过"（红色）                  |
+| 检查项列（动态生成） | 基本信息完整性、价格合规性、敏感词检测、属性一致性、主图数量、详情图数量… | 通过显示"通过"（绿色），不通过显示具体原因（红色） |
+| 汇总列               | 不通过原因汇总                                                            | 所有不通过原因用分号分隔，通过则留空               |
+
+检查项列名从 `all_goods_results` 中动态收集（遍历所有商品的 `checks` 数组取唯一 `name` 值），保持首次出现顺序。
+
+`generate_summary_text()` 返回格式化的文字总结，直接输出给用户即可，示例效果：
 
 ```
 【审核完成】
 
-当前店铺 LE COQ SPORTIF(乐卡克公鸡) 共有 15 款商品
+门店：宁波店 | 店铺：LE COQ SPORTIF(乐卡克公鸡)
+商品总数：15 款
 
 ✅ 审核通过：10 款
-❌ 不符合要求：5 款
+❌ 审核不通过：5 款
 
-【不通过详情】
-1. R-SPEED MESH - 主图数量不足（当前2张，要求至少3张）
-2. AIR MAX 2024 - 标题包含敏感词：最
-3. ULTRA BOOST - 详情图数量不足（当前4张，要求至少5张）
-4. STAN SMITH - 检测到手拍图，需要重新拍摄
-5. SUPERSTAR - 抠图失败，背景不够纯净
-
-如需修改后重新审核，请通知运营人员调整商品信息。 
+详细审核报告见附件 Excel 文件。
 ```
 
-- 不通过商品 <= 10款时，逐条列出详情
-- 不通过商品 > 10款时，按原因类型汇总统计
-- 如有 API 端审核失败的商品（本地检测通过但后端拒绝），单独列出并展示 API 返回的失败原因
+如有 API 端审核失败的商品（本地检测通过但后端拒绝），文字总结中会额外提示，例如："⚠️ 其中 2 款商品本地检测通过但后端审核被拒，具体原因见 Excel 报告"。
 
 ## 错误处理
 
@@ -492,22 +532,24 @@ approve_count, fail_reasons = approve_goods([goods_id])
 
 ## 脚本函数速查
 
-| 脚本文件               | 函数                                                             | 参数             | 返回值                                   |
-| ---------------------- | ---------------------------------------------------------------- | ---------------- | ---------------------------------------- |
-| `plaza_code_map.py`    | `get_plaza_code(store_name)`                                     | `str`            | `str \| None`                            |
-| `plaza_code_map.py`    | `get_all_plaza_codes()`                                          | 无               | `dict`                                   |
-| `get_shop_id.py`       | `get_shop_id(plaza_code, shop_name)`                             | `str, str`       | `int \| None`                            |
-| `get_shop_id.py`       | `get_all_shops(plaza_code)`                                      | `str`            | `list`                                   |
-| `query_goods.py`       | `query_goods_list(plaza_code, shop_id, goods_sn=None)`           | `str, int, str?` | `list[dict]`                             |
-| `query_goods.py`       | `find_goods_by_sn(plaza_code, shop_id, goods_sn)`                | `str, int, str`  | `dict \| None`                           |
-| `query_goods.py`       | `find_goods_by_name(plaza_code, shop_id, goods_name)`            | `str, int, str`  | `dict \| None`                           |
-| `query_goods.py`       | `extract_goods_info(goods)`                                      | `dict`           | `dict` (含 galleryCount, detailImgCount) |
-| `query_template.py`    | `query_template_category(goods_id)`                              | `int`            | `str`                                    |
-| `remove_background.py` | `remove_background(goods_id, pic_url, template_name)`            | `int, str, str`  | `str`                                    |
-| `update_gallery.py`    | `update_gallery(goods_id, processed_pic_url, template_category)` | `int, str, str`  | `bool`                                   |
-| `mark_white_pic.py`    | `mark_white_pic(goods_id, force_override=False)`                 | `int, bool`      | `bool`                                   |
-| `approve_goods.py`     | `approve_goods(goods_ids, approve_status="Y")`                   | `list[int], str` | `tuple[int, list[str]]`                  |
-| `check_cookie.py`      | `check_and_set_cookie(cookie_value=None)`                        | `str \| None`    | `str`                                    |
+| 脚本文件                 | 函数                                                              | 参数             | 返回值                                   |
+| ------------------------ | ----------------------------------------------------------------- | ---------------- | ---------------------------------------- |
+| `plaza_code_map.py`      | `get_plaza_code(store_name)`                                      | `str`            | `str \| None`                            |
+| `plaza_code_map.py`      | `get_all_plaza_codes()`                                           | 无               | `dict`                                   |
+| `get_shop_id.py`         | `get_shop_id(plaza_code, shop_name)`                              | `str, str`       | `int \| None`                            |
+| `get_shop_id.py`         | `get_all_shops(plaza_code)`                                       | `str`            | `list`                                   |
+| `query_goods.py`         | `query_goods_list(plaza_code, shop_id, goods_sn=None)`            | `str, int, str?` | `list[dict]`                             |
+| `query_goods.py`         | `find_goods_by_sn(plaza_code, shop_id, goods_sn)`                 | `str, int, str`  | `dict \| None`                           |
+| `query_goods.py`         | `find_goods_by_name(plaza_code, shop_id, goods_name)`             | `str, int, str`  | `dict \| None`                           |
+| `query_goods.py`         | `extract_goods_info(goods)`                                       | `dict`           | `dict` (含 galleryCount, detailImgCount) |
+| `query_template.py`      | `query_template_category(goods_id)`                               | `int`            | `str`                                    |
+| `remove_background.py`   | `remove_background(goods_id, pic_url, template_name)`             | `int, str, str`  | `str`                                    |
+| `update_gallery.py`      | `update_gallery(goods_id, processed_pic_url, template_category)`  | `int, str, str`  | `bool`                                   |
+| `mark_white_pic.py`      | `mark_white_pic(goods_id, force_override=False)`                  | `int, bool`      | `bool`                                   |
+| `approve_goods.py`       | `approve_goods(goods_ids, approve_status="Y")`                    | `list[int], str` | `tuple[int, list[str]]`                  |
+| `check_cookie.py`        | `check_and_set_cookie(cookie_value=None)`                         | `str \| None`    | `str`                                    |
+| `export_audit_result.py` | `export_audit_result(all_goods_results, store_name, shop_name)`   | `list, str, str` | `str` (生成的文件路径，用于附件发送)     |
+| `export_audit_result.py` | `generate_summary_text(store_name, shop_name, all_goods_results)` | `str, str, list` | `str` (格式化文字总结)                   |
 
 ## 参考文档
 
