@@ -12,16 +12,18 @@ API_BASE = "http://124.70.133.190:18080"
 COOKIE = os.getenv("GOODS_AUDIT_COOKIE")
 
 
-def get_shop_id(plaza_code: str, shop_name: str) -> Optional[int]:
+def find_matching_shops(plaza_code: str, shop_name: str) -> list[dict]:
     """
-    根据门店编号和店铺名称获取店铺ID
+    根据门店编号和店铺名称查找所有匹配的店铺。
+
+    匹配逻辑：先收集精确匹配结果，若无精确匹配再收集模糊匹配结果（互相包含关系）。
 
     Args:
         plaza_code: 门店编号 (如 "0001")
         shop_name: 店铺名称 (如 "LE COQ SPORTIF(乐卡克公鸡)")
 
     Returns:
-        店铺ID，若未找到返回None
+        匹配的店铺列表，每项为 {"id": int, "name": str}；无匹配返回空列表
     """
     url = f"{API_BASE}/admin/mdata/shop/shopList"
     params = {"plazaCode": plaza_code}
@@ -38,17 +40,35 @@ def get_shop_id(plaza_code: str, shop_name: str) -> Optional[int]:
 
     shop_list = data.get("data", {}).get("shop", [])
 
-    # 精确匹配
-    for shop in shop_list:
-        if shop.get("name") == shop_name:
-            return shop.get("id")
+    exact_matches = [
+        {"id": shop.get("id"), "name": shop.get("name")}
+        for shop in shop_list
+        if shop.get("name") == shop_name
+    ]
+    if exact_matches:
+        return exact_matches
 
-    # 模糊匹配（店铺名称包含搜索词）
-    for shop in shop_list:
-        if shop_name in shop.get("name", "") or shop.get("name", "") in shop_name:
-            return shop.get("id")
+    fuzzy_matches = [
+        {"id": shop.get("id"), "name": shop.get("name")}
+        for shop in shop_list
+        if shop_name in shop.get("name", "") or shop.get("name", "") in shop_name
+    ]
+    return fuzzy_matches
 
-    return None
+
+def get_shop_id(plaza_code: str, shop_name: str) -> Optional[int]:
+    """
+    根据门店编号和店铺名称获取店铺ID（向后兼容，返回首个匹配）
+
+    Args:
+        plaza_code: 门店编号 (如 "0001")
+        shop_name: 店铺名称 (如 "LE COQ SPORTIF(乐卡克公鸡)")
+
+    Returns:
+        店铺ID，若未找到返回None
+    """
+    matches = find_matching_shops(plaza_code, shop_name)
+    return matches[0]["id"] if matches else None
 
 
 def get_all_shops(plaza_code: str) -> list:

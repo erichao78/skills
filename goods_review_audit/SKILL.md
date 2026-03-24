@@ -22,7 +22,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 
 from scripts.plaza_code_map import get_plaza_code
-from scripts.get_shop_id import get_shop_id
+from scripts.get_shop_id import find_matching_shops, get_shop_id
 from scripts.query_goods import query_goods_list, extract_goods_info
 from scripts.query_template import query_template_category
 from scripts.remove_background import remove_background
@@ -83,18 +83,30 @@ plaza_code = get_plaza_code("宁波店")  # 返回 "0001"，找不到则返回 N
 
 ### 第三步：获取店铺 ID
 
-使用 `scripts/get_shop_id.py` 中的 `get_shop_id()` 函数：
+使用 `scripts/get_shop_id.py` 中的 `find_matching_shops()` 函数，返回所有匹配的店铺列表。同一门店下同品牌可能存在多个店铺（如不同楼层或区域），需要根据返回结果数量决定是否让用户确认：
 
 ```python
-from scripts.get_shop_id import get_shop_id
+from scripts.get_shop_id import find_matching_shops
 
-shop_id = get_shop_id(plaza_code, "LE COQ SPORTIF(乐卡克公鸡)")
-# 返回 int 类型的店铺ID，未找到返回 None
+matches = find_matching_shops(plaza_code, "LE COQ SPORTIF")
+# 返回 list[dict]，每项含 {"id": int, "name": str}
+
+if len(matches) == 1:
+    # 唯一匹配，直接使用，无需用户确认
+    shop_id = matches[0]["id"]
+elif len(matches) > 1:
+    # 同一门店存在多个匹配店铺，列出供用户选择
+    # 示例输出：
+    #   1. 店铺ID: 123, 名称: LE COQ SPORTIF 1店
+    #   2. 店铺ID: 456, 名称: LE COQ SPORTIF 2店
+    # 等待用户指定后，使用对应的 shop_id
+    pass
+else:
+    # 未找到匹配，提示用户确认名称或调用 get_all_shops() 列出该门店全部店铺
+    pass
 ```
 
-匹配逻辑：先精确匹配 `name` 字段，若未命中再做模糊匹配（互相包含关系）。
-
-如果返回 `None`，说明在该门店下找不到此店铺/品牌，如果在该门店下查询到多个店铺/品牌时，提示用户选择或确认名称是否正确。
+匹配逻辑：先收集精确匹配结果，若无精确匹配再收集模糊匹配结果（互相包含关系）。
 
 ### 第四步：查询商品信息
 
@@ -512,15 +524,17 @@ print(summary)
 
 `get_plaza_code()` 返回 `None` 时，列出所有支持的门店名称让用户选择。
 
-### 店铺不存在
+### 店铺匹配异常
 
-`get_shop_id()` 返回 `None` 时，提示用户确认：
+`find_matching_shops()` 返回空列表时，提示用户确认：
 
 1. 店铺/品牌名称是否正确
 2. 该店铺是否已在该门店开业
 3. 是否有该店铺的查看权限
 
 可调用 `get_all_shops(plaza_code)` 获取该门店下全部店铺列表供用户参考。
+
+`find_matching_shops()` 返回多个结果时，说明同一门店下存在多个匹配的店铺（如同品牌在不同楼层或区域），将匹配列表展示给用户并请其选择目标店铺后再继续。
 
 ### API 调用失败
 
@@ -536,7 +550,8 @@ print(summary)
 | ------------------------ | ----------------------------------------------------------------- | ---------------- | ---------------------------------------- |
 | `plaza_code_map.py`      | `get_plaza_code(store_name)`                                      | `str`            | `str \| None`                            |
 | `plaza_code_map.py`      | `get_all_plaza_codes()`                                           | 无               | `dict`                                   |
-| `get_shop_id.py`         | `get_shop_id(plaza_code, shop_name)`                              | `str, str`       | `int \| None`                            |
+| `get_shop_id.py`         | `find_matching_shops(plaza_code, shop_name)`                      | `str, str`       | `list[dict]`（每项含 id, name）          |
+| `get_shop_id.py`         | `get_shop_id(plaza_code, shop_name)`                              | `str, str`       | `int \| None`（向后兼容，返回首个匹配）  |
 | `get_shop_id.py`         | `get_all_shops(plaza_code)`                                       | `str`            | `list`                                   |
 | `query_goods.py`         | `query_goods_list(plaza_code, shop_id, goods_sn=None)`            | `str, int, str?` | `list[dict]`                             |
 | `query_goods.py`         | `find_goods_by_sn(plaza_code, shop_id, goods_sn)`                 | `str, int, str`  | `dict \| None`                           |
