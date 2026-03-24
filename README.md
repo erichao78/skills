@@ -1,1 +1,1 @@
-# eric's business skills
+# Eric's business skills
