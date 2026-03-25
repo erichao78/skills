@@ -171,6 +171,8 @@ goods_info = extract_goods_info(goods_list[0])
 
 ### 第五步：商品信息合规性检测
 
+检查流程：基本信息完整性 -> 价格合规性 -> 标题敏感词检测 -> 属性一致性
+
 对每个商品进行以下检查：
 
 #### 5.1 基本信息完整性
@@ -189,14 +191,14 @@ goods_info = extract_goods_info(goods_list[0])
 
 #### 5.3 标题敏感词检测
 
-参考 `references/sensitive_words.md` 中定义的敏感词库，对商品名称进行检测。该文件中包含了敏感词列表和一个示例检测函数 `check_sensitive_words`，可以直接复制该逻辑在内存中执行：
+参考 `references/sensitive_words.md` 中定义的敏感词库，对商品标题进行检测。该文件中包含了敏感词列表和一个示例检测函数 `check_sensitive_words`，可以直接复制该逻辑在内存中执行：
 
 ```python
 SENSITIVE_WORDS = {
     "毒品", "赌博", "色情", "暴力", "诈骗", "传销", "枪支", "假货", "水货",
     "最", "第一", "顶级", "独一无二", "史无前例", "全网", "国家级", "世界级",
     "假一赔十", "绝对", "肯定", "100%", "保证", "无效退款",
-    "盗版", "山寨", "仿版", "A货", "超A",
+    "盗版", "山寨", "仿版", "A货", "超A", "秒杀", "新款"，"包邮", "亏本", "清仓", "不退换", "最低价"
 }
 
 def check_sensitive_words(text: str) -> tuple[bool, list[str]]:
