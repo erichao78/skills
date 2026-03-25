@@ -157,7 +157,7 @@ for spu in spu_codes:
 ```python
 goods_info = extract_goods_info(goods_list[0])
 # 返回包含以下字段的 dict:
-# id, goodsSn, name, goodsTitle, shopId, shopName,
+# id, goodsSn, name (商品标题), shopId, shopName,
 # brandId, categoryNames, parentCategoryName,
 # categoryGender, categorySeason,
 # minOriPrice, maxOriPrice, minCurPrice, maxCurPrice, discountRate,
@@ -177,7 +177,7 @@ goods_info = extract_goods_info(goods_list[0])
 
 - **SPU编码** (`goodsSn`): 必须存在且非空
 - **SKU编码** (`productList`): 遍历列表检查`skuCode`必须存在且非空
-- **商品名称** (`name`): 必须存在且非空，并且长度必须要5个中文字符及以上
+- **商品标题** (`name`): 必须存在且非空，并且长度必须要5个中文字符及以上
 - **品牌信息** (`brandId`): 必须存在
 - **分类信息** (`categoryNames`): 必须存在
 - **性别/季节** (`categoryGender`, `categorySeason`): 必须填写
@@ -204,7 +204,7 @@ def check_sensitive_words(text: str) -> tuple[bool, list[str]]:
     return len(found) == 0, found
 ```
 
-**检查范围**：商品名称 (`name`)
+**检查范围**：商品标题 (`name`)
 
 **检查项**：
 
