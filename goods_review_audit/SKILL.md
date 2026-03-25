@@ -10,7 +10,7 @@ compatibility: 需要 Python 3.9+、requests 库、openpyxl 库（用于生成 E
 
 ## 脚本执行方式
 
-`scripts/` 目录中的脚本都是独立的 Python 文件，每个文件内包含可调用的函数。所有 API 调用都依赖环境变量 `GOODS_AUDIT_COOKIE` 进行身份认证。
+`scripts/` 目录中的脚本都是独立的 Python 文件，每个文件内包含可调用的函数。所有 API 调用都依赖环境变量 `GOODS_AUDIT_COOKIE` 进行身份认证。**在执行过程中决不允许自己新创建脚本，只能使用 `scripts/` 目录中的脚本**
 
 **执行脚本有两种方式**：
 
