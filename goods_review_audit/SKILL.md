@@ -177,7 +177,7 @@ goods_info = extract_goods_info(goods_list[0])
 
 - **SPU编码** (`goodsSn`): 必须存在且非空
 - **SKU编码** (`productList`): 遍历列表检查`skuCode`必须存在且非空
-- **商品名称** (`name`): 不得为空，不得少于5个中文字符
+- **商品名称** (`name`): 必须存在且非空，并且长度必须要5个中文字符及以上
 - **品牌信息** (`brandId`): 必须存在
 - **分类信息** (`categoryNames`): 必须存在
 - **性别/季节** (`categoryGender`, `categorySeason`): 必须填写
