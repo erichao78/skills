@@ -11,6 +11,25 @@ API_BASE = "http://124.70.133.190:18080"
 COOKIE = os.getenv("GOODS_AUDIT_COOKIE")
 
 
+# 所有模板分类名称
+ALL_TEMPLATE_CATEGORIES = [
+    "鞋",
+    "上装",
+    "下装-成人",
+    "下装-儿童",
+    "包-默认",
+    "包-大",
+    "包-小",
+    "内衣",
+    "美妆",
+    "内衣-模特",
+    "上装-模特",
+    "下装-模特",
+    "套装-模特",
+    "其他",
+]
+
+
 def query_template_category(goods_id: int) -> str:
     """
     查询商品模板分类名称

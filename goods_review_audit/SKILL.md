@@ -274,7 +274,7 @@ if sku_pic_urls:
 
 #### 6.4 图片完整性检测
 
-使用图像查看能力（如 MCP browser 工具或其他图像工具）查看 `gallery` 字段中的图片 URL，检查是否包含以下类型：
+使用图像查看能力（如 MCP browser 工具或其他图像工具）打开 `gallery` 字段中的所有图片 URL，判断是否包含以下图片类型：
 
 - 正面图：展示商品正面
 - 背面图：展示商品背面
@@ -298,7 +298,7 @@ template_category = query_template_category(goods_id)
 # 返回 str 类型的模板分类名称，默认 "其他"
 ```
 
-#### 7.2 选择抠图源图片
+#### 7.2 选择抠图源图片并确定模板分类
 
 抠图的目标是生成干净的白底商品图，因此源图片必须展示完整的商品主体。在第六步图片检测中已识别出每张主图的类型，这里利用这些信息筛选和排序。
 
@@ -358,6 +358,77 @@ def select_cutout_source(gallery_images, image_types):
                 return img['url']
 
     return None  # 无可用抠图源
+```
+
+**图片类型识别与模板分类更新**
+
+选好抠图源图片后，需要使用图像查看能力（如 MCP browser 工具或其他图像工具）查看上一步选择好的图片，判断它是**产品图**还是**模特图**：
+
+- **产品图**：画面中只有商品本身（平铺、挂拍或纯商品展示），没有真人模特穿着/使用
+- **模特图**：画面中有真人模特穿着或手持商品
+
+判断结果决定是否需要调整第 7.1 步返回的 `template_category`：
+
+1. **如果是产品图** — `template_category` 保持不变，直接进入 7.3 执行抠图。
+
+2. **如果是模特图** — 需要将 `template_category` 更新为对应的模特分类。从 `scripts/query_template.py` 的 `ALL_TEMPLATE_CATEGORIES` 中查找匹配的模特分类：
+
+```python
+from scripts.query_template import ALL_TEMPLATE_CATEGORIES
+
+def get_model_category(template_category: str) -> str | None:
+    """
+    根据基础模板分类查找对应的模特分类。
+    匹配规则：在 ALL_TEMPLATE_CATEGORIES 中查找以 template_category 的基础部分
+    开头、且以 "-模特" 结尾的分类。
+
+    例如：
+      "上装"     → "上装-模特"
+      "下装-成人" → "下装-模特"（取 "下装" 作为基础部分匹配）
+      "内衣"     → "内衣-模特"
+      "鞋"       → None（无对应模特分类）
+    """
+    model_categories = [c for c in ALL_TEMPLATE_CATEGORIES if c.endswith("-模特")]
+
+    # 先尝试直接匹配：template_category + "-模特"
+    direct_match = template_category + "-模特"
+    if direct_match in model_categories:
+        return direct_match
+
+    # 再尝试基础部分匹配：取第一个 "-" 之前的部分作为基础名
+    base_name = template_category.split("-")[0]
+    for cat in model_categories:
+        if cat.startswith(base_name + "-") and cat.endswith("-模特"):
+            return cat
+
+    return None
+```
+
+根据查找结果处理：
+
+- **找到模特分类** → 将 `template_category` 更新为模特分类（如 `"上装"` → `"上装-模特"`），继续进入 7.3 执行抠图
+- **找不到模特分类** → 说明该品类不支持模特图抠图（如鞋类、包类、美妆类），标记该商品`"无可用抠图源"`并跳过抠图步骤
+
+```python
+# 完整流程示例
+source_url = select_cutout_source(gallery_images, image_types)
+if source_url is None:
+    # 无可用抠图源，跳过
+    pass
+else:
+    # 使用图像查看能力判断选中的源图片是产品图还是模特图
+    is_model_image = ...  # 通过图像查看能力判断
+
+    if is_model_image:
+        model_cat = get_model_category(template_category)
+        if model_cat is None:
+            # 该品类无模特分类，无法抠图，标记"无可用抠图源"并跳过
+            pass
+        else:
+            template_category = model_cat  # 更新为模特分类
+    # 如果是产品图，template_category 保持不变
+
+    # 进入 7.3 使用 template_category 执行抠图
 ```
 
 #### 7.3 执行抠图
